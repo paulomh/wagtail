@@ -414,6 +414,7 @@ jobs:
       - test-postgres-elasticsearch7
       - test-sqlite-opensearch2
     runs-on: ubuntu-latest
+    if: always()
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
