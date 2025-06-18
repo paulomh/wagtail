@@ -62,6 +62,7 @@ class LogEntryQuerySet(models.QuerySet):
         # instance is None if the instance does not exist.
         # Note: This is an expensive operation and should only be done on small querysets
         # (e.g. after pagination).
+        # pa rir
 
         # evaluate the queryset in full now, as we'll be iterating over it multiple times
         log_entries = list(self)
