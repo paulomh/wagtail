@@ -77,7 +77,7 @@ class RevisionsManager(models.Manager.from_queryset(RevisionQuerySet)):
             .values_list("pk", flat=True)[:1]
         )
 
-
+#pra comitar.
 class PageRevisionsManager(RevisionsManager):
     def get_queryset(self):
         return RevisionQuerySet(self.model, using=self._db).page_revisions()

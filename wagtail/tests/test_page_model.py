@@ -1,6 +1,6 @@
 import datetime
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -15,6 +15,7 @@ from django.utils import timezone, translation
 from freezegun import freeze_time
 
 from wagtail.actions.copy_for_translation import ParentNotTranslatedError
+from wagtail.models import Page, Site, SiteRootPath
 from wagtail.coreutils import get_dummy_request
 from wagtail.locks import BasicLock, ScheduledForPublishLock, WorkflowLock
 from wagtail.models import (
@@ -4089,3 +4090,73 @@ class TestPageServeWithPasswordRestriction(TestCase, WagtailTestUtils):
 
         self.assertFalse("Cache-Control" in response)
         self.assertFalse("Expires" in response)
+        
+class TestGetUrlMethodMC(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.root_page = Page.objects.get(depth=1)
+        cls.homepage = cls.root_page.add_child(instance=Page(title="Homepage A", slug="home-a"))
+        cls.site_a = Site.objects.get(is_default_site=True)
+        cls.site_a.root_page = cls.homepage
+        cls.site_a.hostname = "localhost"
+        cls.site_a.save()
+
+        cls.other_homepage = cls.root_page.add_child(instance=Page(title="Homepage B", slug="home-b"))
+        cls.site_b = Site.objects.create(hostname="site-b.com", root_page=cls.other_homepage)
+        cls.factory = RequestFactory()
+
+    # --- Testes para a Decisão 1 (D1 - Tabela 2) ---
+
+    def test_D1_T2_L1(self):
+        request = self.factory.get("/", SERVER_NAME=self.site_a.hostname)
+        self.assertEqual(self.homepage.get_url(request=request), "/")
+
+    def test_D1_T2_L2(self):
+        self.assertEqual(self.homepage.get_url(), f"http://{self.site_a.hostname}/")
+
+    def test_D1_T2_L3(self):
+        request = self.factory.get("/", SERVER_NAME=self.site_a.hostname)
+        self.assertEqual(self.homepage.get_url(request=request, current_site=self.site_a), "/")
+
+    # --- Testes para a Decisão 2 (D2 - Tabela 3) ---
+
+    def test_D2_T3_L2(self):
+        page_nao_roteavel = Page.objects.get(depth=1)
+        self.assertIsNone(page_nao_roteavel.get_url())
+
+    @patch('wagtail.models.Page.get_url_parts')
+    def test_D2_T3_L5(self, mock_get_url_parts):
+        mock_get_url_parts.return_value = (self.site_a.id, None, None)
+        self.assertIsNone(self.homepage.get_url())
+    
+    @patch('wagtail.models.Page.get_url_parts')
+    def test_D2_T3_L6(self, mock_get_url_parts):
+        mock_get_url_parts.return_value = (self.site_a.id, None, '/caminho/')
+        with self.assertRaises(TypeError):
+            self.homepage.get_url()
+
+    @patch('wagtail.models.Page.get_url_parts')
+    def test_D2_T3_L7(self, mock_get_url_parts):
+        mock_get_url_parts.return_value = (self.site_a.id, f"http://{self.site_a.hostname}", None)
+        with self.assertRaises(TypeError):
+            self.homepage.get_url()
+
+    # --- Testes para a Decisão 3 (D3 - Tabela 4) ---
+
+    def test_D3_T4_L2(self):
+        request_for_site_b = self.factory.get("/", SERVER_NAME=self.site_b.hostname)
+        self.assertEqual(self.other_homepage.get_url(request=request_for_site_b), "/")
+
+    @patch('wagtail.models.Page._get_site_root_paths')
+    def test_D3_T4_L3(self, mock_get_site_root_paths):
+        mock_srp = SiteRootPath(self.site_a.id, self.homepage.url_path, f"http://{self.site_a.hostname}", 'en')
+        mock_get_site_root_paths.return_value = [mock_srp]
+        request_for_site_b = self.factory.get("/", SERVER_NAME=self.site_b.hostname)
+        self.assertEqual(self.homepage.get_url(request=request_for_site_b), "/")
+
+    def test_D3_T4_L4(self):
+        request_for_site_a = self.factory.get("/", SERVER_NAME=self.site_a.hostname)
+        self.assertEqual(self.other_homepage.get_url(request=request_for_site_a), f"http://{self.site_b.hostname}/")
+
+    def test_D3_T4_L6(self):
+        self.assertEqual(self.other_homepage.get_url(), f"http://{self.site_b.hostname}/")
