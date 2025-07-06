@@ -123,25 +123,13 @@ class Indexed:
     
     @classmethod
     def get_search_fields(cls):
-            """
-            Percorre a hierarquia de herança do modelo (MRO) para coletar
-            todos os `search_fields` definidos na classe atual e em quaisquer
-            modelos abstratos dos quais ela herda.
-            """
-            search_fields = {}
+        fields_map = {}
+        for base in reversed(cls.__mro__):
+            if "search_fields" in base.__dict__:
+                for field in base.search_fields:
+                    fields_map[field.field_name] = field
 
-            # Itera sobre a MRO da classe em ordem reversa (do pai mais distante para o filho)
-            # para que as definições do filho sobrescrevam as do pai.
-            for base in reversed(cls.__mro__):
-                # Usamos __dict__ para pegar apenas os search_fields definidos
-                # diretamente na classe 'base', e não os já herdados.
-                if "search_fields" in base.__dict__:
-                    for field in base.search_fields:
-                        # Usamos o nome do campo como chave do dicionário para
-                        # lidar com a sobrescrita de campos.
-                        search_fields[field.field_name] = field
-
-            return list(search_fields.values())
+        return list(fields_map.values())
 
     search_fields = []
 
