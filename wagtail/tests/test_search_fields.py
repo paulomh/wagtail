@@ -34,4 +34,4 @@ class TestSearchFields(TestCase):
 
             self.search_backend.refresh_index()
             results = Page.objects.search("um_termo_unico_e_pesquisavel")
-            self.assertIn(page, results)
+            self.assertIn(page, [r.specific for r in results])
